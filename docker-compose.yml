@@ -1,0 +1,52 @@
+# ── FinSight — Docker Compose ──────────────────────────────────────────────────
+# Starts two services:
+#   backend  → FastAPI on http://localhost:8000
+#   frontend → Streamlit on http://localhost:8501
+#
+# Usage:
+#   docker compose up --build          # first run (builds images)
+#   docker compose up                  # subsequent runs
+#   docker compose up -d               # detached (background)
+#   docker compose down                # stop & remove containers
+#   docker compose down -v             # also remove the SQLite volume
+
+services:
+
+  # ── FastAPI backend ──────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: finsight-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - DATABASE_URL=sqlite:////data/finsight.db
+    volumes:
+      - db_data:/data          # persist SQLite DB across restarts
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── Streamlit frontend ───────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: finsight-frontend
+    ports:
+      - "8501:8501"
+    environment:
+      - API_BASE=http://backend:8000   # uses Docker's internal DNS
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  db_data:
